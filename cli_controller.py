@@ -5,6 +5,8 @@ Created on Jun 24, 2023
 '''
 
 from connection_manager import ConnectionManager
+from display_manager import console_display
+
 from load_dotenv import load_dotenv
 
 import logging
@@ -21,7 +23,7 @@ bot_username = "[Bot] Robocop"
 print("--- Initializing Robocop control panel ---")
 bot_id = os.getenv("BOT_ID")
 
-cm = ConnectionManager(bot_id)
+cm = ConnectionManager(bot_id, display=console_display)
 cm.do_connect()
 
 do_continue = True

@@ -11,10 +11,10 @@ import logging
 
 
 class ConnectionManager():
-    def __init__(self, bot_id):
+    def __init__(self, bot_id, display=None):
         self.bot_id = bot_id
         
-        self.gm = GameManager()
+        self.gm = GameManager(display)
         
         sio = socketio.Client()
         
@@ -30,7 +30,7 @@ class ConnectionManager():
             
         @sio.on("error_set_username")
         def error_set_username(error_str):
-            self.on_error_set_username()
+            self.on_error_set_username(error_str)
             
         @sio.on("game_start")
         def start(data, other):
@@ -38,10 +38,18 @@ class ConnectionManager():
             
         @sio.on("game_update")
         def game_update(data, other):
-            move = self.gm.process_turn(self.gm.update(data))
+            move = self.gm.process_turn(data)
             
             if move is not None:
                 self.do_attack(start=move["start"], end=move["end"], is50=move["is50"])
+                
+        @sio.on("game_lost")
+        def game_lost(data, other):
+            print("Defeated by {}".format(data["killer"]))
+            
+        @sio.on("game_won")
+        def game_won(data, other):
+            print("You won!")
             
     def on_disconnect(self):
         logging.warning("disconnected from server")
@@ -59,6 +67,10 @@ class ConnectionManager():
             player_index = data["playerIndex"]
             self.gm.set_player_index(player_index)
             
+            usernames = data["usernames"]
+            teams = data["teams"]
+            self.gm.add_players(usernames, teams)
+            
             replay_url = 'https://bot.generals.io/replays/' + data["replay_id"]
             logging.info("replay will be available after the game at {}".format(replay_url))
             
@@ -66,7 +78,7 @@ class ConnectionManager():
         self.sio.connect('https://botws.generals.io')
    
     def do_set_username(self, username):
-        self.sio.emit('set_username', (self.bot_id, self.bot_username))
+        self.sio.emit('set_username', (self.bot_id, username))
     
     def do_join_game(self, game_id):
         self.game_id = game_id

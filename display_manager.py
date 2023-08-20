@@ -29,19 +29,21 @@ INDEX_CITIES = 4
 INDEX_GENERALS = 5
 INDEX_SELF_ARMIES = 6
 INDEX_NEUTRAL_ARMIES = 7
-INDEX_ENEMY_ARMY_START = 8
+INDEX_FRIENDLY_ARMIES = 8
+INDEX_ENEMY_ARMY_START = 9
     
-COLOR_ORDER = [Back.GREEN, Back.RED, Back.BLUE, Back.CYAN, Back.YELLOW, Back.YELLOW]
+COLOR_ORDER = [Back.GREEN, Back.RED, Back.BLUE, Back.YELLOW, Back.YELLOW]
 
 def get_color(index):
     return COLOR_ORDER[min(index, len(COLOR_ORDER) - 1)]
 
 def console_display(game_state, fog=False, color_offset=0):
-    dim = game_state.shape[1]
-    board_elements = [[(Back.BLACK, Fore.WHITE, "") for _ in range(dim)] for _ in range(dim)]
+    h = game_state.shape[1]
+    w = game_state.shape[2]
+    board_elements = [[(Back.BLACK, Fore.WHITE, "") for _ in range(w)] for _ in range(h)]
         
-    for i in range(dim):
-        for j in range(dim):
+    for i in range(h):
+        for j in range(w):
             back_color = Back.BLACK
             fore_color = Fore.WHITE
             tile_char = " "
@@ -64,18 +66,18 @@ def console_display(game_state, fog=False, color_offset=0):
                 elif game_state[INDEX_NEUTRAL_ARMIES][i, j] > 0: # neutral army
                     tile_char = int(game_state[INDEX_NEUTRAL_ARMIES][i, j])
                     back_color = get_color(-1)
+                elif game_state[INDEX_FRIENDLY_ARMIES][i, j] > 0: # friendly army
+                    tile_char = int(game_state[INDEX_FRIENDLY_ARMIES][i, j])
+                    back_color = Back.CYAN
                 elif game_state[INDEX_ENEMY_ARMY_START][i, j] > 0: # enemy army 1
                     tile_char = int(game_state[INDEX_ENEMY_ARMY_START][i, j])
                     back_color = get_color(1 + color_offset)
                 elif game_state[INDEX_ENEMY_ARMY_START + 1][i, j] > 0: # enemy army 2
                     tile_char = int(game_state[INDEX_ENEMY_ARMY_START + 1][i, j])
                     back_color = get_color(2 + color_offset)
-                elif game_state[INDEX_ENEMY_ARMY_START + 2][i, j] > 0: # enemy army 3
+                elif game_state[INDEX_ENEMY_ARMY_START + 2][i, j] > 0: # all other armies
                     tile_char = int(game_state[INDEX_ENEMY_ARMY_START + 2][i, j])
                     back_color = get_color(3 + color_offset)
-                elif game_state[INDEX_ENEMY_ARMY_START + 3][i, j] > 0: # all other armies
-                    tile_char = int(game_state[INDEX_ENEMY_ARMY_START + 4][i, j])
-                    back_color = get_color(4 + color_offset)
                     
                 if game_state[INDEX_GENERALS][i, j] > 0: # is a general
                     fore_color = Fore.YELLOW
@@ -86,10 +88,10 @@ def console_display(game_state, fog=False, color_offset=0):
             board_elements[i][j] = (back_color, fore_color, tile_char)
     
     #os.system("cls")
-    for i in range(dim):
+    for i in range(h):
         empty_row_str = ""
         num_row_str = ""
-        for j in range(dim):
+        for j in range(w):
             empty_row_str += board_elements[i][j][0] + board_elements[i][j][1] + "   "
             num_row_str += board_elements[i][j][0] + board_elements[i][j][1] + str(board_elements[i][j][2]).center(3)
         

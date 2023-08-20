@@ -7,7 +7,10 @@ Created on Jun 24, 2023
 import numpy as np
 from random_brain import RandomBrain
 from metrics_brain import MetricsBrain
+from human_brain import HumanBrain
 from board import Board
+
+import os
 
 
 class GameManager():
@@ -16,16 +19,39 @@ class GameManager():
     TILE_FOG = -3
     TILE_FOG_OBSTACLE = -4
     
-    def __init__(self):
+    def __init__(self, display=None):
         #self.player_index = player_index
         #self.brain = RandomBrain("robocop")
         self.brain = MetricsBrain("robocop")
-        self.generals = 0
-        self.cities = []
         self.map = []
+        self.generals = []
+        self.cities = []
+        self.players = [self.brain]
+        self.board = None
+        self.display = display
     
     def set_player_index(self, player_index):
-        self.player_index = player_index
+        self.brain.set_index(player_index)
+        
+    def add_players(self, usernames, teams):
+        players = []
+        for i in range(len(usernames)):
+            if i == self.brain.get_index():
+                if len(teams) > 0:
+                    self.brain.set_team(teams[i])
+                else:
+                    self.brain.set_team(i)
+                players.append(self.brain)
+            else:
+                brain = HumanBrain(usernames[i])
+                brain.set_index(i)
+                if len(teams) > 0:
+                    brain.set_team(teams[i])
+                else:
+                    brain.set_team(i)
+                players.append(brain)
+        
+        self.players = players
     
     @staticmethod
     def patch(old, diff):
@@ -42,22 +68,33 @@ class GameManager():
             i += 1
         return out
     
-    def sample_turn(self, player, board, move):
-        new_board = board.copy()
+    def sample_turn(self, player, move):
+        new_board = self.board.copy()
         new_board.move(player, move)
         return new_board.view_board(player, fog=True)
     
-    def process_turn(self, map_state):
-        board = Board.from_game_state(map_state)
-        return self.brain.turn(map_state, lambda move: self.sample_turn(self.brain, board, move))
+    def process_turn(self, data):
+        self.update(data)
+        if self.display is not None:
+            os.system("cls")
+            self.display(self.board.view_board(self.brain))
+        
+        return self.brain.turn(self.board.view_board(self.brain, fog=True), lambda move: self.sample_turn(self.brain, move))
     
     def update(self, data):
         self.map = self.patch(self.map, data["map_diff"])
         self.cities = self.patch(self.cities, data["cities_diff"])
         self.generals = data["generals"]
         
+        #print(self.map)
+        #print(self.cities)
+        
         map_w = self.map[0]
         map_h = self.map[1]
+        
+        if self.board is None:
+            self.board = Board(map_h, map_w, players=self.players, generate=False)
+        
         size = map_w * map_h
         
         armies = self.map[2: size + 2]
@@ -76,46 +113,41 @@ class GameManager():
         # layer 4: cities (1 where city exists, 0 elsewhere)
         # layer 5: generals (1 where general exists, 0 elsewhere)
         # layer 6: bot armies (number representing quantity)
-        # layer 7-10: other player armies (number representing quantity)
+        # layer 7: neutral armies (cities, number representing quantity)
+        # layer 8: friendly armies (number representing quantity)
+        # layer 9-10: other player armies (number representing quantity)
         # layer 11: all other armies (number representing quantity)
         
-        map_state = np.zeros((12, map_h, map_w))
-        map_state[0] = (terrain_mat == -1) * 1
-        map_state[1] = (terrain_mat == -2) * 1
-        map_state[2] = (terrain_mat == -3) * 1
-        map_state[3] = (terrain_mat == -4) * 1
+        cities_mat = np.zeros((map_h, map_w))
+        for c in self.cities:
+            i = c // map_w
+            j = c % map_w
+            cities_mat[i, j] = 1
+        self.board.static_game_layers[Board.INDEX_CITIES] = cities_mat # ones where cities exist, 0 otherwise
+        self.board.static_game_layers[Board.INDEX_NEUTRAL_ARMIES] = (terrain_mat == -1) * (cities_mat) * np.array(armies).reshape((map_h, map_w))
         
-        cities_mat = np.zeros((map_h * map_w, 1))
-        if len(self.cities) > 0:
-            cities = np.array(self.cities)
-            cities_mat[cities] = 1
-        map_state[4] = cities_mat.reshape(map_h, map_w) # ones where cities exist, 0 otherwise
+        self.board.static_game_layers[Board.INDEX_EMPTY] = (terrain_mat == Board.TILE_EMPTY) * (1 - cities_mat) * 1
+        self.board.static_game_layers[Board.INDEX_MOUNTAIN] = (terrain_mat == Board.TILE_MOUNTAIN) * 1
         
+        # the only fog layer we care about is the brain's because we assume that no other bot will require a view of the board
+        self.board.player_fog_layers[self.brain] = (terrain_mat == Board.TILE_FOG) * 1
         
-        generals = np.array([x for x in self.generals if x >= 0])
-        generals_mat = np.zeros((map_h * map_w, 1))
-        generals_mat[generals] = 1
-        map_state[5] = generals_mat.reshape(map_h, map_w)
+        # we make a big simplifying assumption that all fog obstacles are mountains here. it makes calculating the fog obstacle layer way easier. trust me. 
+        self.board.static_game_layers[Board.INDEX_MOUNTAIN] += (terrain_mat == Board.TILE_FOG_OBSTACLE) * 1
         
-        # bot armies
-        map_state[6] = (terrain_mat >= 0) * (terrain_mat == self.player_index) * np.array(armies).reshape((map_h, map_w))
+        generals_mat = np.zeros((map_h, map_w))
+        for g in self.generals:
+            if g > 0:
+                i = g // map_w
+                j = g % map_w
+                generals_mat[i, j] = 1
+        self.board.static_game_layers[Board.INDEX_GENERALS] = generals_mat
         
-        # next 4 players
-        players_added = 0
-        other_index = 0
-        while players_added < 4:
-            if not other_index == self.player_index:
-                map_state[players_added + 7] = (terrain_mat >= 0) * (terrain_mat == other_index) * np.array(armies).reshape((map_h, map_w))
-                players_added += 1
-            other_index += 1
+        # armies
+        for p in self.players:
+            self.board.player_game_layers[p] = (terrain_mat >= 0) * (terrain_mat == p.get_index()) * np.array(armies).reshape((map_h, map_w))
         
-        map_state[11] = (terrain_mat >= 0) * (terrain_mat >= other_index) * (terrain_mat != self.player_index) * np.array(armies).reshape((map_h, map_w))
-        
-        #map_state = np.concatenate((np.expand_dims(terrain_mat, 0), np.expand_dims(armies_mat, 0)))
-        
-        #game_state = {"map_state": map_state, "t"}
-        
-        return map_state
+        return self.board
         
     
 #gm = GameManager()

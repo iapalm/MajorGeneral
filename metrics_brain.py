@@ -35,7 +35,9 @@ class MetricsBrain(Brain):
             return (np.sum(state[6] > 0), np.sum(state[6]), np.sum(state[8:]), np.sum(state[7]), np.sum((state[4] * state[6]) > 0), np.sum(state[5] * state[6]))
         
         def eval_metrics(metrics):
-            return metrics[0] + metrics[1] - 0.8 * metrics[2] - 0.5 * metrics[3] + 50 * metrics[4] #+ 0.1 * metrics[5] # total + territory - 0.8 * enemies - 0.5 * neutrals + 50 * cities + 0.1 * unts on general
+            #return metrics[0] + metrics[1] - 0.8 * metrics[2] - 0.5 * metrics[3] + 50 * metrics[4] #+ 0.1 * metrics[5] # total + territory - 0.8 * enemies - 0.5 * neutrals + 50 * cities + 0.1 * unts on general
+            #return metrics[0] + 0.5 * metrics[1] - 0.75 * metrics[2]
+            return metrics[0]
         
         potential_move_metrics = [(None, get_metrics(state))] # (move, (metrics tuple))
         

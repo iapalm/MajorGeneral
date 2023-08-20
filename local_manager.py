@@ -15,13 +15,23 @@ import logging
 from time import sleep
 
 class LocalManager():
-    def __init__(self, dim, primary_bot, other_bots=[], display=None):
+    def __init__(self, h, w, primary_bot, other_bots=[], teams=[], display=None):
         assert len(other_bots) > 0
         self.primary_bot = primary_bot
         self.other_bots = other_bots
         self.display = display
         
-        self.board = Board(dim=dim, players=[primary_bot] + other_bots)
+        players = []
+        for i, b in enumerate([primary_bot] + other_bots):
+            b.set_index(i)
+            if len(teams) > 0:
+                b.set_team(teams[i])
+            else:
+                b.set_team(i)
+            players.append(b)
+        self.players = players
+        
+        self.board = Board(h, w, players=self.players)
     
     def sample_turn(self, player, move):
         new_board = self.board.copy()
@@ -34,23 +44,27 @@ class LocalManager():
         while not end_game:
             os.system("cls")
             turn_number += 1
-            moves = [(p, p.turn(self.board.view_board(p, fog=True), lambda move: self.sample_turn(p, move))) for p in self.board.players]
+            moves = [(p, p.turn(self.board.view_board(p, fog=True), lambda move: self.sample_turn(p, move))) for p in self.players]
             self.board.process_turn(moves, turn_number % 2 == 0, turn_number % 10 == 0)
             #if turn_number % 1 == 0:
             if self.display is not None:
                 self.display(self.board.view_board(self.primary_bot, fog=True), fog=True)
-                self.display(self.board.view_board(self.other_bots[0], fog=True), fog=True, color_offset=1)
+                self.display(self.board.view_board(self.other_bots[0], fog=True), fog=True)
+                #self.display(self.board.view_board(self.other_bots[1], fog=True), fog=True)
+                #self.display(self.board.view_board(self.other_bots[2], fog=True), fog=True)
             
-            defeated_players = sum([p.is_defeated() for p in self.board.players])
+            remaining_players = [p for p in self.players if not p.is_defeated()]
             
-            if defeated_players == len(self.board.players) - 1:
+            if len({p.get_team() for p in remaining_players}) == 1:
                 end_game = True
                 
-            sleep(.25)
+            sleep(.5)
         
         print("game over")
 
 rb1 = MetricsBrain("robocop")
 rb2 = MetricsBrain("terminator")
-lm = LocalManager(dim=8, primary_bot=rb1, other_bots=[rb2], display=console_display)
+rb3 = MetricsBrain("skynet")
+rb4 = MetricsBrain("irobot")
+lm = LocalManager(10, 10, primary_bot=rb1, other_bots=[rb2, rb3, rb4], teams=[1, 1, 2, 2], display=console_display)
 lm.play()
