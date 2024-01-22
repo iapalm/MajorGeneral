@@ -7,22 +7,28 @@ Created on Jun 22, 2023
 from game_manager import GameManager
 from board import Board
 from random_brain import RandomBrain
-from metrics_brain import MetricsBrain
+from metrics_brain import MetricsBrain, MetricsMonteCarloBrain
+from cnn_brain import CNNBrain, CNNMonteCarloBrain
 from display_manager import console_display
 
+import time
 import os
 import logging
 from time import sleep
 
 class LocalManager():
-    def __init__(self, h, w, primary_bot, other_bots=[], teams=[], display=None):
+    def __init__(self, h, w, primary_bot, other_bots=[], teams=[], max_turns=1000, display=None, time_delay=0):
         assert len(other_bots) > 0
         self.primary_bot = primary_bot
         self.other_bots = other_bots
+        self.max_turns = max_turns
         self.display = display
+        self.time_delay = time_delay
+        self.turn_number = 1
         
         players = []
         for i, b in enumerate([primary_bot] + other_bots):
+            b.reset()
             b.set_index(i)
             if len(teams) > 0:
                 b.set_team(teams[i])
@@ -32,39 +38,49 @@ class LocalManager():
         self.players = players
         
         self.board = Board(h, w, players=self.players)
-    
-    def sample_turn(self, player, move):
-        new_board = self.board.copy()
-        new_board.move(player, move)
-        return new_board.view_board(player, fog=True)
         
     def play(self):
         end_game = False
-        turn_number = 0
-        while not end_game:
-            os.system("cls")
-            turn_number += 1
-            moves = [(p, p.turn(self.board.view_board(p, fog=True), lambda move: self.sample_turn(p, move))) for p in self.players]
-            self.board.process_turn(moves, turn_number % 2 == 0, turn_number % 10 == 0)
-            #if turn_number % 1 == 0:
-            if self.display is not None:
-                self.display(self.board.view_board(self.primary_bot, fog=True), fog=True)
-                self.display(self.board.view_board(self.other_bots[0], fog=True), fog=True)
-                #self.display(self.board.view_board(self.other_bots[1], fog=True), fog=True)
-                #self.display(self.board.view_board(self.other_bots[2], fog=True), fog=True)
-            
-            remaining_players = [p for p in self.players if not p.is_defeated()]
-            
-            if len({p.get_team() for p in remaining_players}) == 1:
-                end_game = True
-                
-            sleep(.5)
+        winners = None
+        while not end_game and self.turn_number < self.max_turns:
+            end_game, winners, _ = self.turn()
+        if self.display is not None:
+            print("game over, the bot {}".format("won" if (self.primary_bot in winners) else "lost"))
+        return winners
+    
+    def turn(self):
+        start_turn_time = time.time()
+        end_game = False
+        winners = set()
+        self.turn_number += 1
+        moves = [(p, p.turn(self.board.view_board(p, fog=True), self.board.get_metrics(p), self.board.fog_mask_copy(p))) for p in self.players]
+        self.board.process_turn(moves, self.turn_number)
         
-        print("game over")
+        if self.display is not None:
+            os.system("cls")
+            self.display(self.board.view_board(self.primary_bot, fog=True), fog=True)
+            self.display(self.board.view_board(self.other_bots[0], fog=True), fog=True)
+        
+        remaining_players = {p for p in self.players if not p.is_defeated()}
+        
+        if self.turn_number > self.max_turns:
+            end_game = True
+        elif len({p.get_team() for p in remaining_players}) == 1:
+            end_game = True
+            
+            winners = remaining_players
+        
+        end_turn_time = time.time()
+        if self.time_delay > 0 and end_turn_time - start_turn_time > 0:
+            sleep(end_turn_time - start_turn_time)
+            
+        return (end_game, winners, self.board.get_metrics(self.primary_bot))
 
-rb1 = MetricsBrain("robocop")
-rb2 = MetricsBrain("terminator")
-rb3 = MetricsBrain("skynet")
-rb4 = MetricsBrain("irobot")
-lm = LocalManager(10, 10, primary_bot=rb1, other_bots=[rb2, rb3, rb4], teams=[1, 1, 2, 2], display=console_display)
-lm.play()
+if __name__ == "__main__":
+    rb1 = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/cnnmodel_32e_200g_initial.pt", name="robocop")
+    rb2 = MetricsMonteCarloBrain("terminator")
+    rb3 = MetricsBrain("skynet")
+    rb4 = MetricsBrain("irobot")
+    #lm = LocalManager(10, 10, primary_bot=rb1, other_bots=[rb2, rb3, rb4], teams=[1, 1, 2, 2], display=console_display)
+    lm = LocalManager(8, 8, primary_bot=rb1, other_bots=[rb2], teams=[], display=console_display, time_delay=0.0)
+    lm.play()

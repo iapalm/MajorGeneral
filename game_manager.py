@@ -6,7 +6,8 @@ Created on Jun 24, 2023
 
 import numpy as np
 from random_brain import RandomBrain
-from metrics_brain import MetricsBrain
+from metrics_brain import MetricsBrain, MetricsMonteCarloBrain
+from cnn_brain import CNNMonteCarloBrain
 from human_brain import HumanBrain
 from board import Board
 
@@ -22,7 +23,9 @@ class GameManager():
     def __init__(self, display=None):
         #self.player_index = player_index
         #self.brain = RandomBrain("robocop")
-        self.brain = MetricsBrain("robocop")
+        #self.brain = MetricsBrain("robocop")
+        #self.brain = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/cnnmodel_32e_200g_initial.pt", name="robocop")
+        self.brain = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/self-play-1/model-ep-best.pt", name="robocop")
         self.map = []
         self.generals = []
         self.cities = []
@@ -70,16 +73,26 @@ class GameManager():
     
     def sample_turn(self, player, move):
         new_board = self.board.copy()
-        new_board.move(player, move)
-        return new_board.view_board(player, fog=True)
+        new_board.process_turn(((player, move),), new_board.turn + 1)
+        return (new_board.view_board(player, fog=True), new_board.get_metrics(player))
     
     def process_turn(self, data):
         self.update(data)
+        
+        self.board.turn = data["turn"]
+        
+        scores = {s["i"]: {"total": s["total"], "tiles": s["tiles"], "dead": s["dead"]} for s in data["scores"]}
+        for p in self.board.players:
+            self.board.scores[p] = scores[p.get_index()]
+            
+            if scores[p.get_index()]["dead"]:
+                p.set_defeated(True)
+        
         if self.display is not None:
             os.system("cls")
             self.display(self.board.view_board(self.brain))
         
-        return self.brain.turn(self.board.view_board(self.brain, fog=True), lambda move: self.sample_turn(self.brain, move))
+        return self.brain.turn(self.board.view_board(self.brain, fog=True), self.board.get_metrics(self.brain), self.board.fog_mask_copy(self.brain))
     
     def update(self, data):
         self.map = self.patch(self.map, data["map_diff"])
@@ -145,7 +158,7 @@ class GameManager():
         
         # armies
         for p in self.players:
-            self.board.player_game_layers[p] = (terrain_mat >= 0) * (terrain_mat == p.get_index()) * np.array(armies).reshape((map_h, map_w))
+            self.board.player_game_layers[p] = ((terrain_mat >= 0) * (terrain_mat == p.get_index()) * np.array(armies).reshape((map_h, map_w))).astype(np.float64)
         
         return self.board
         

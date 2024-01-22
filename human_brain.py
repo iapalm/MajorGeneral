@@ -19,5 +19,5 @@ from brain import Brain
 # layer 11: all other armies (number representing quantity)
 
 class HumanBrain(Brain):
-    def turn(self, state, sample_turn_fn):
+    def turn(self, state, metrics, sample_turn_fn):
         raise ValueError("human player cannot automatically take turn")

@@ -14,7 +14,7 @@ class ConnectionManager():
     def __init__(self, bot_id, display=None):
         self.bot_id = bot_id
         
-        self.gm = GameManager(display)
+        self.display = display
         
         sio = socketio.Client()
         
@@ -75,7 +75,7 @@ class ConnectionManager():
             logging.info("replay will be available after the game at {}".format(replay_url))
             
     def do_connect(self):
-        self.sio.connect('https://botws.generals.io')
+        self.sio.connect('https://bot.generals.io') # bot server has ssl cert issues :(
    
     def do_set_username(self, username):
         self.sio.emit('set_username', (self.bot_id, username))
@@ -83,6 +83,8 @@ class ConnectionManager():
     def do_join_game(self, game_id):
         self.game_id = game_id
         self.sio.emit('join_private', (game_id, self.bot_id))
+        
+        self.gm = GameManager(self.display)
     
         logging.info("https://bot.generals.io/games/{}".format(game_id))
         

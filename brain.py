@@ -42,8 +42,23 @@ class Brain():
     def is_defeated(self):
         return self.defeated
     
-    def turn(self, state, sample_turn_fn):
+    def turn(self, state, metrics, fog_board):
         pass
+    
+    def reset(self):
+        self.defeated = False
+        self.team = None
+        self.index = None
+        
+        return self
+    
+    def copy(self):
+        b = Brain(self.name)
+        b.defeated = self.defeated
+        b.index = self.index
+        b.team = self.team
+        
+        return b
     
     def __hash__(self):
         return hash(self.name)

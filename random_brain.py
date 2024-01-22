@@ -21,7 +21,7 @@ import numpy as np
 # layer 11: all other armies (number representing quantity)
 
 class RandomBrain(Brain):
-    def turn(self, state, sample_turn_fn):
+    def turn(self, state, metrics, fog_board):
         rng = np.random.default_rng()
         
         _, map_h, map_w = state.shape

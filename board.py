@@ -40,31 +40,52 @@ class Board():
         self.h = h
         self.w = w
         self.players = players
+        self.scores = {}
+        self.turn = 1
                 
         self.initialize_board(players, generate=generate)
-            
-    def from_game_state(self, state):
-#         bot_name = "self"
-#         self.player_indices = {0: bot_name}
-#         for i in range(4):
-#             if np.sum(state[8 + i, :, :]) > 0:
-#                 self.player_indices[i] = str(i)
-#         
-#         self.player_fog_layers = {}
-#         
-#         self.player_fog_layers[bot_name] = state[2]
-        raise NotImplementedError()
         
     def copy(self):
-        board = Board(self.h, self.w, self.players)
+        board = Board(self.h, self.w, self.players, generate=False)
         board.h = self.h
         board.w = self.w
-        board.players = [x for x in self.players]
+        board.players = [x.copy() for x in self.players]
+        board.scores = {k: v.copy() for k, v in self.scores.items()}
+        board.turn = self.turn
         board.player_game_layers = {k: v.copy() for k, v in self.player_game_layers.items()}
         board.player_fog_layers = {k: v.copy() for k, v in self.player_fog_layers.items()}
         board.static_game_layers = {k: v.copy() for k, v in self.static_game_layers.items()}
         
         return board
+    
+    def fog_mask_copy(self, player):
+        """
+        board = Board(self.h, self.w, self.players, generate=False)
+        board.h = self.h
+        board.w = self.w
+        board.players = [x.copy() for x in self.players]
+        board.scores = {k: v.copy() for k, v in self.scores.items()}
+        board.turn = self.turn
+        board.player_game_layers = {k: self._apply_fog_mask(v.copy(), self.player_fog_layers[player]) for k, v in self.player_game_layers.items()}
+        board.player_fog_layers = {k: v.copy() for k, v in self.player_fog_layers.items() if k == player}
+        empty = 1 - self.player_fog_layers[player]
+        
+        board.static_game_layers = dict()
+        for k, v in self.static_game_layers.items():
+            if k == self.INDEX_EMPTY:
+                # empty tiles that the player can see
+                empty += self._apply_fog_mask(v, self.player_fog_layers[player])
+            else:
+                if k == self.INDEX_GENERALS:
+                    # copy only generals that the player can see
+                    board.static_game_layers[k] = self._apply_fog_mask(v.copy(), self.player_fog_layers[player])
+                    empty -= (board.static_game_layers[k] > 0)
+                else:
+                    empty -= (v > 0)
+                    board.static_game_layers[k] = v.copy()
+        board.static_game_layers[self.INDEX_EMPTY] = empty
+        """
+        return self.copy()
     
     def _apply_fog_mask(self, layer, fog_mask):
         return layer * (1 - fog_mask)
@@ -82,7 +103,6 @@ class Board():
         board_view[self.INDEX_GENERALS, :, :] = apply_fog(self.static_game_layers[self.INDEX_GENERALS], fog_mask)
         board_view[self.INDEX_SELF_ARMIES, :, :] = self.player_game_layers[player]
         board_view[self.INDEX_NEUTRAL_ARMIES, :, :] = apply_fog(self.static_game_layers[self.INDEX_NEUTRAL_ARMIES], fog_mask)
-        
         
         placed_enemies = 0
         # enemies
@@ -121,7 +141,11 @@ class Board():
         if len(owners) == 0:
             return None
         if len(owners) > 1:
-            raise ValueError("The following players all own {}, {}: {}".format(i, j, owners))
+            #raise ValueError("The following players all own {}, {}: {}".format(i, j, owners))
+            print("WARNING: The following players all own {}, {}: {}".format(i, j, owners))
+            # TODO: fix this!
+            for a in range(1, len(owners)):
+                self.player_game_layers[owners[a]][i, j] = 0
         return owners[0]
     
     def get_friendly_owner(self, player, i, j):
@@ -130,24 +154,103 @@ class Board():
                 return p
         raise ValueError("No valid friendly player")
     
-    def process_turn(self, moves, reinforce_cities=False, reinforce_all=False):
+    def get_metrics(self, player):
+        # metrics to include:
+        # 0: score
+        # 1: whether the player has won the game
+        # 2: player owned tiles
+        # 3: player armies
+        # 4: player defeat status
+        # 5, 6, 7: first enemy score stats (tiles/armies/defeat)
+        # 8, 9, 10: second enemy score stats (tiles/armies/defeat)
+        # 11, 12: all other enemy score stats (tiles/armies sum)
+        # 13: number of neutral units (sum)
+        # 14: number of cities owned by player
+        # 15: number of units on general tile
+        metrics = np.zeros((16,))
+        
+        remaining_players = {p for p in self.players if not self.scores[p]["dead"]}
+        metrics[1] = 1 if (len(remaining_players) == 1 and player in remaining_players) else 0
+        metrics[2] = self.scores[player]["tiles"]
+        metrics[3] = self.scores[player]["total"]
+        metrics[4] = int(self.scores[player]["dead"])
+        
+        added_enemies = 0
+        remainder_tiles = 0
+        remainder_total = 0
+        for p in self.players:
+            if not p == player and not p.is_defeated():
+                if added_enemies < 2:
+                    metrics[5 + 3 * added_enemies] = self.scores[p]["tiles"]
+                    metrics[6 + 3 * added_enemies] = self.scores[p]["total"]
+                    metrics[7 + 3 * added_enemies] = int(self.scores[p]["dead"])
+                else:
+                    remainder_tiles += self.scores[p]["tiles"]
+                    remainder_total += self.scores[p]["total"]
+                
+                added_enemies += 1
+        metrics[11] = remainder_tiles
+        metrics[12] = remainder_total
+        
+        metrics[13] = np.sum(self.static_game_layers[self.INDEX_NEUTRAL_ARMIES])
+        metrics[14] =  np.sum(self.static_game_layers[self.INDEX_CITIES] * (self.player_game_layers[player] > 0))
+        metrics[15] =  np.sum(self.static_game_layers[self.INDEX_GENERALS] * (self.player_game_layers[player]))
+        
+        # calculate a score
+        n_enemies = len(remaining_players) - 1
+        
+        if n_enemies == 0:
+            score = 10000
+        else:
+            # tile imbalance: should be positive if player owns more tiles than average enemy
+            # as the number of opponents goes to infinity, we won't accept attacks against enemies with more than the following armies in a square:
+            tile_reward_factor = 10
+            tile_score = tile_reward_factor * (metrics[2] - (metrics[5] + metrics[8] + metrics[11]) / n_enemies)
+            # army score: should be positive if player owns more armies than average enemy
+            # this means attacking an enemy 1 on 1 is a wash with no other opponents, but more opponents makes it unfavorable
+            army_score = metrics[3] - (metrics[6] + metrics[9] + metrics[12]) / n_enemies
+            # city score: equal to number of cities owned
+            #city_tile_reward_factor = 12.5 # how many tiles is a city worth? 1 reinforcement per turn avg = 12.5 tiles based on reinforcement times
+            #city_score = (city_tile_reward_factor * tile_reward_factor) * metrics[14]
+            # general score: receive reward for having armies on your general tile
+            #general_reward_factor = 1 # 10% armies on your general is as good as a tile
+            #general_score = (general_reward_factor * tile_reward_factor) * (-1 if metrics[15] > metrics[3] / 10 else -1)
+            # defeat score: -10000 if lost, 10000 if won, 1000 for each defeated enemy
+            defeat_score = -10000 * metrics[4] + 10000 * metrics[1] + 1000 * (len(self.players) - len(remaining_players))
+            
+            #score = tile_score + army_score + city_score + general_score + defeat_score
+            
+            # score is symmetric: > 0 means winning, < 0 means losing
+            score = tile_score + army_score + defeat_score
+        
+        metrics[0] = score
+        
+        return metrics
+        
+    
+    def process_turn(self, moves, turn, reinforce_cities_every=2, reinforce_all_every=25):
+        self.turn = turn
+        
+        for p, m in moves:
+            self.move(p, m)
+        
         # increment generals and cities
-        if reinforce_cities:
+        if turn % reinforce_cities_every == 0:
             for p in self.players:
                 self.player_game_layers[p] += self.static_game_layers[self.INDEX_CITIES] * (self.player_game_layers[p] > 0)
                 self.player_game_layers[p] += self.static_game_layers[self.INDEX_GENERALS] * (self.player_game_layers[p] > 0)
         
         # reinforce all tiles
-        if reinforce_all:
+        if turn % reinforce_all_every == 0:
             for p in self.players:
                 self.player_game_layers[p] = (self.player_game_layers[p] + 1) * (self.player_game_layers[p] > 0)
-        
-        for p, m in moves:
-            self.move(p, m)
+            
+        for p in self.players:
+            self.scores[p] = {"total": np.sum(self.player_game_layers[p]), "tiles": np.sum(self.player_game_layers[p] > 0), "dead": p.is_defeated()}
         
         
     def move(self, player, move):
-        if move is None:
+        if move is None or player.is_defeated():
             return
         # {"start": int(start_index), "end": int(target_index), "is50": False}
         def valid_coord_x(x):
@@ -170,6 +273,9 @@ class Board():
                     enemy_armies = game_state[self.INDEX_ENEMY_ARMY_START:, end_i, end_j]
                     self_start_armies = game_state[self.INDEX_SELF_ARMIES, start_i, start_j]
                     moving_armies = round(self_start_armies / (2 if move["is50"] else 1)) - 1
+                    
+                    if moving_armies == 0:
+                        return
                     
                     if game_state[self.INDEX_EMPTY, end_i, end_j] == 1:
                         # destination is empty
@@ -209,7 +315,6 @@ class Board():
                             # reduce enemy armies by moving units
                             self.modify_static_state(self.INDEX_NEUTRAL_ARMIES, end_i, end_j, enemy_army_count - moving_armies)
                     elif np.sum(enemy_armies) > 0: # destination is enemy
-                        #print(enemy_armies)
                         enemy_army_index = np.where(enemy_armies > 0)[0][0] + self.INDEX_ENEMY_ARMY_START
                         enemy_army_count = game_state[enemy_army_index, end_i, end_j]
                         enemy_player = self.get_tile_owner(end_i, end_j)
@@ -252,9 +357,12 @@ class Board():
                                 
                                 # adjust fog of enemy, have to recalculate 3x3 square
                                 #self.modify_player_fog_slice(enemy_player, np.ix_(range(0, self.dim), range(0, self.dim)), 1)
+                                
+                                ## TODO: Consider friendly units for visibility
+                                
                                 for i in range(max(end_i - 1, 0), min(end_i + 2, self.h)):
                                     for j in range(max(end_j - 1, 0), min(end_j + 2, self.w)):
-                                        if np.sum(game_state[enemy_army_index, max(i - 1, 0): min(i + 2, self.h), max(j - 1, 0): min(j + 2, self.w)]) > 0:
+                                        if np.sum(self.player_game_layers[enemy_player][max(i - 1, 0): min(i + 2, self.h), max(j - 1, 0): min(j + 2, self.w)]) > 0:
                                             self.modify_player_fog(enemy_player, i, j, 0)
                                         else:
                                             self.modify_player_fog(enemy_player, i, j, 1)
@@ -363,3 +471,4 @@ class Board():
         self.player_game_layers = player_game_layers
         self.player_fog_layers = player_fog_layers
         self.static_game_layers = static_game_layers
+        self.scores = {p: {"tiles": 1, "total": 1, "dead": False} for p in self.players}

@@ -23,6 +23,8 @@ bot_username = "[Bot] Robocop"
 print("--- Initializing Robocop control panel ---")
 bot_id = os.getenv("BOT_ID")
 
+# change display here, set to none for no cli display
+#cm = ConnectionManager(bot_id, display=None)
 cm = ConnectionManager(bot_id, display=console_display)
 cm.do_connect()
 
