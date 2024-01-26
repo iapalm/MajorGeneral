@@ -1,6 +1,17 @@
 # Building a Machine Learning-Based generals.io Bot #
 This repository is associated with the Numbers Game article at https://ianpalmer.io/numbersgame/blog/generals-io-part-1.
 
+## Requirements ##
+```
+python==3.8.17
+torch==2.0.1+cu117
+torchvision==0.15.2+cu117
+numpy==1.24.3
+python-dotenv==1.0.0
+python-socketio==5.11.0
+colorama==0.4.6
+```
+
 ## Quick Setup ##
 To run a local game of a CNNBrain with MCTS against a MetricsBrain, simply run `python local_manager.py`.
 
