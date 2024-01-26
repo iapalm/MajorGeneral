@@ -21,11 +21,11 @@ class GameManager():
     TILE_FOG_OBSTACLE = -4
     
     def __init__(self, display=None):
-        #self.player_index = player_index
         #self.brain = RandomBrain("robocop")
         #self.brain = MetricsBrain("robocop")
-        #self.brain = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/cnnmodel_32e_200g_initial.pt", name="robocop")
-        self.brain = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/self-play-1/model-ep-best.pt", name="robocop")
+        #self.brain = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/self-play-1/model_ep_best.pt", name="robocop")
+        #self.brain = MetricsMonteCarloBrain(name="robocop")
+        self.brain = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/cnnmodel_32e_200g_initial.pt", name="robocop")
         self.map = []
         self.generals = []
         self.cities = []

@@ -77,10 +77,17 @@ class LocalManager():
         return (end_game, winners, self.board.get_metrics(self.primary_bot))
 
 if __name__ == "__main__":
-    rb1 = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/cnnmodel_32e_200g_initial.pt", name="robocop")
-    rb2 = MetricsMonteCarloBrain("terminator")
-    rb3 = MetricsBrain("skynet")
-    rb4 = MetricsBrain("irobot")
+    rb1 = CNNMonteCarloBrain(from_checkpoint="models/real_value_metrics/self-play-1/model_ep_best.pt", name="robocop")
+    rb2 = MetricsBrain("skynet")
+    
+    # Other bot options
+    #rb3 = MetricsMonteCarloBrain("terminator")
+    #rb4 = CNNBrain(from_checkpoint="models/real_value_metrics/cnnmodel_32e_200g_initial.pt", name="terminator")
+    #rb5 = CNNBrain(from_checkpoint="models/real_value_metrics/self-play-1/model_ep_best.pt", name="terminator")
+    #rb6 = RandomBrain("irobot")
+    
+    # 4-player game with teams
     #lm = LocalManager(10, 10, primary_bot=rb1, other_bots=[rb2, rb3, rb4], teams=[1, 1, 2, 2], display=console_display)
+    
     lm = LocalManager(8, 8, primary_bot=rb1, other_bots=[rb2], teams=[], display=console_display, time_delay=0.0)
     lm.play()

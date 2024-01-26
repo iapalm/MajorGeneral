@@ -17,15 +17,15 @@ logging.basicConfig(level=logging.DEBUG)
 load_dotenv()
 
 ## game presets
-default_game_id = "ian_and_bot_match"
+default_game_id = "numbersgame_bot_match"
 bot_username = "[Bot] Robocop"
 
 print("--- Initializing Robocop control panel ---")
 bot_id = os.getenv("BOT_ID")
 
 # change display here, set to none for no cli display
-#cm = ConnectionManager(bot_id, display=None)
-cm = ConnectionManager(bot_id, display=console_display)
+cm = ConnectionManager(bot_id, display=None)
+#cm = ConnectionManager(bot_id, display=console_display)
 cm.do_connect()
 
 do_continue = True
